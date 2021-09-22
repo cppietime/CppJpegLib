@@ -10,6 +10,7 @@ jpegutil.hpp
 #include <cstddef>
 #include <iostream>
 #include <algorithm>
+#include <vector>
 
 #define JPEG_MAX_COMPONENTS 5
 
@@ -39,15 +40,28 @@ namespace Jpeg {
             size_t qtable;
             size_t dcTable;
             size_t acTable;
+            JpegComponent(
+                std::pair<int, int> sampling,
+                size_t qtable,
+                size_t dcTable,
+                size_t acTable
+            ) :
+                sampling {sampling},
+                qtable {qtable},
+                dcTable {dcTable},
+                acTable {acTable}
+            {}
     };
 
     /*
     Data object to hold settings for JPEG encoding and metadata
     */
     struct JpegSettings {
+        private:
+            void init();
         public:
-            int numComponents;
-            std::pair<int, int> sampling[JPEG_MAX_COMPONENTS + 2]; // Final 2 store the maxima and gcd of ratios
+            size_t numComponents;
+            std::vector<JpegComponent> components;
             std::pair<int, int> size;
             JpegDensityUnits densityUnits;
             std::pair<int, int> density;
@@ -56,16 +70,16 @@ namespace Jpeg {
             int compressionFlags;
             int numQTables;
             int qtables[JPEG_MAX_COMPONENTS][JPEG_BLOCK_SIZE];
-            size_t qIndices[JPEG_MAX_COMPONENTS];
             std::pair<int, int> version;
             int resetInterval;
 
+            std::pair<int, int> mcuScale;
             std::pair<int, int> numMcus;
             size_t componentOffsets[JPEG_MAX_COMPONENTS];
             size_t mcuSize;
             
-            JpegSettings(int numComponents,
-                std::pair<int, int> sampling[JPEG_MAX_COMPONENTS],
+            JpegSettings(
+                std::vector<JpegComponent> components,
                 std::pair<int, int> size,
                 JpegDensityUnits densityUnits = DPI,
                 std::pair<int, int> density = std::pair<int, int>(1, 1),
@@ -73,9 +87,21 @@ namespace Jpeg {
                 int quality = 50,
                 int compressionFlags = 0,
                 int numQTables = 2,
-                const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},size_t qIndices[JPEG_MAX_COMPONENTS] = (size_t[JPEG_MAX_COMPONENTS]){0, 1, 1, 0},
+                const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},
                 std::pair<int, int> version = std::pair<int, int>(1, 1),
-                int resetInterval = 0); // This should always be 1, 1, if I'm not mistaken
+                int resetInterval = 0);
+                
+            JpegSettings(
+                std::pair<int, int> size,
+                JpegDensityUnits densityUnits = DPI,
+                std::pair<int, int> density = std::pair<int, int>(1, 1),
+                int bitDepth = 8,
+                int quality = 50,
+                int compressionFlags = 0,
+                int numQTables = 2,
+                const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},
+                std::pair<int, int> version = std::pair<int, int>(1, 1),
+                int resetInterval = 0);
     };
     
     /*
@@ -89,7 +115,11 @@ namespace Jpeg {
             std::int16_t (*blocks)[JPEG_BLOCK_SIZE];
             void encodeDeltas();
         public:
-            Jpeg(const JpegSettings& settings);
+            Jpeg(const JpegSettings& jpegSettings) :
+                settings {jpegSettings},
+                blocks {new std::int16_t[jpegSettings.numMcus.first * jpegSettings.numMcus.second * jpegSettings.mcuSize][JPEG_BLOCK_SIZE]}
+            {}
+            
             ~Jpeg();
             void encodeRGB(std::uint8_t *rgb);            
     };

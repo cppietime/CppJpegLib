@@ -13,14 +13,7 @@ Jpeg testing
 
 int main() {
     
-    std::pair<int, int> sampling[JPEG_MAX_COMPONENTS] = {
-        std::pair<int, int>(2, 2),
-        std::pair<int, int>(1, 1),
-        std::pair<int, int>(1, 1),
-    };
     Jpeg::JpegSettings settings(
-        3,
-        sampling,
         std::pair<int, int>(W, H)
     );
     Jpeg::Jpeg img(settings);

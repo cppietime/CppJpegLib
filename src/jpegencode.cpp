@@ -126,8 +126,8 @@ void DCT8(std::int16_t *data, size_t stride)
 
 void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
 {
-    int denX = settings.sampling[JPEG_MAX_COMPONENTS].first;
-    int denY = settings.sampling[JPEG_MAX_COMPONENTS].second;
+    int denX = settings.mcuScale.first;
+    int denY = settings.mcuScale.second;
     /* Size of each MCU in pixels */
     size_t mcuWidth = denX * JPEG_BLOCK_ROW;
     size_t mcuHeight = denY * JPEG_BLOCK_ROW;
@@ -143,13 +143,13 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
         size_t mcuOutputStart = settings.mcuSize * (yMcu * settings.numMcus.first + xMcu);
         /* Iterate each component */
         for (size_t iComp = 0; iComp < settings.numComponents; iComp++) {
-            int numX = settings.sampling[iComp].first;
-            int numY = settings.sampling[iComp].second;
+            int numX = settings.components[iComp].sampling.first;
+            int numY = settings.components[iComp].sampling.second;
             /* Number of pixels of the input image to be scanned over for each block in this component */
             size_t blockWidth = JPEG_BLOCK_ROW * numX / denX;
             size_t blockHeight = JPEG_BLOCK_ROW * numY / denY;
             size_t compOutputStart = settings.componentOffsets[iComp] + mcuOutputStart;
-            const int *qTable = settings.qtables[settings.qIndices[iComp]];
+            const int *qTable = settings.qtables[settings.components[iComp].qtable];
             /* Iterate each block */
             for (size_t yBlock = 0; yBlock < numY; yBlock++) {
             for (size_t xBlock = 0; xBlock < numX; xBlock++) {
@@ -200,7 +200,7 @@ void Jpeg::Jpeg::encodeDeltas()
                 predictor = 0;
             }
             /* Iterate over every block in MCU of this component */
-            size_t numBlocks = settings.sampling[iComp].first * settings.sampling[iComp].second;
+            size_t numBlocks = settings.components[iComp].sampling.first * settings.components[iComp].sampling.second;
             for (size_t iBlock = 0; iBlock < numBlocks; iBlock++) {
                 std::int16_t *block = blocks[iBlock + settings.componentOffsets[iComp] + iMcu * settings.mcuSize];
                 int delta = block[0] - predictor;
