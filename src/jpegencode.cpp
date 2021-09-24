@@ -3,9 +3,121 @@ jpegencode.cpp
 */
 
 #include <iostream>
+#include <sstream>
 #include <cmath>
 #include <cstdint>
+#include <endian.h>
+#include <climits>
+#include "bitutil.hpp"
 #include "jpegutil.hpp"
+
+#define SYMBOL_LENGTHS 16
+#define SYMBOL_CAP 256
+
+static Jpeg::codes_t defaultEncodingCodes;
+const std::int16_t defaultDcLuminance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
+    {-1},
+    {0, -1},
+    {1, 2, 3, 4, 5, -1},
+    {6, -1},
+    {7, -1},
+    {8, -1},
+    {9, -1},
+    {10, -1},
+    {11, -1},
+    {-1},
+    {-1},
+    {-1},
+    {-1},
+    {-1},
+    {-1},
+    {-1}
+};
+const std::int16_t defaultDcChrominance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
+    {-1},
+    {0, 1, 2, -1},
+    {3, -1},
+    {4, -1},
+    {5, -1},
+    {6, -1},
+    {7, -1},
+    {8, -1},
+    {9, -1},
+    {10, -1},
+    {11, -1},
+    {-1},
+    {-1},
+    {-1},
+    {-1},
+    {-1}
+};
+const std::int16_t defaultAcLuminance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
+    {-1},
+    {0x01, 0x02, -1},
+    {0x03, -1},
+    {0x00, 0x04, 0x11, -1},
+    {0x05, 0x12, 0x21, -1},
+    {0x31, 0x41, -1},
+    {0x06, 0x13, 0x51, 0x61, -1},
+    {0x07, 0x22, 0x71, -1},
+    {0x14, 0x32, 0x81, 0x91, 0xA1, -1},
+    {0x08, 0x23, 0x42, 0xB1, 0xC1, -1},
+    {0x15, 0x52, 0xD1, 0xF0, -1},
+    {0x24, 0x33, 0x62, 0x72, -1},
+    {-1},
+    {-1},
+    {0x82, -1},
+    {0x09, 0x0A,
+     0x16, 0x17, 0x18, 0x19, 0x1A,
+     0x25, 0x26, 0x27, 0x28, 0x29, 0x2A,
+     0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A,
+     0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A,
+     0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A,
+     0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A,
+     0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x78, 0x7A,
+     0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A,
+     0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A,
+     0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA,
+     0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA,
+     0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA,
+     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD6, 0xD8, 0xD9, 0xDA,
+     0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA,
+     0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
+    -1}
+};
+const std::int16_t defaultAcChrominance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
+    {-1},
+    {0x00, 0x01, -1},
+    {0x02, -1},
+    {0x03, 0x11, -1},
+    {0x04, 0x05, 0x21, 0x31, -1},
+    {0x06, 0x12, 0x41, 0x51, -1},
+    {0x07, 0x61, 0x71, -1},
+    {0x13, 0x22, 0x32, 0x81, -1},
+    {0x08, 0x14, 0x42, 0x91, 0xA1, 0xB1, 0xC1, -1},
+    {0x09, 0x23, 0x33, 0x52, 0xF0, -1},
+    {0x15, 0x62, 0x72, 0xD1, -1},
+    {0x0A, 0x16, 0x24, 0x34, -1},
+    {-1},
+    {0xE1, -1},
+    {0x25, 0xF1, -1},
+    {0x17, 0x18, 0x19, 0x1A,
+     0x26, 0x27, 0x28, 0x29, 0x2A,
+     0x35, 0x36, 0x37, 0x38, 0x39, 0x3A,
+     0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A,
+     0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A,
+     0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A,
+     0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x78, 0x7A,
+     0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A,
+     0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A,
+     0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA,
+     0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA,
+     0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA,
+     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD6, 0xD8, 0xD9, 0xDA,
+     0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA,
+     0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
+    -1}
+};
 
 /*
 u-major, so given u and x, use the coefficient at 8u + x
@@ -55,7 +167,7 @@ const int Jpeg::defaultChrominanceQTable[JPEG_BLOCK_SIZE] = {
 };
 
 inline float accumRowRGB(std::uint8_t *rgb,
-    size_t width, size_t height, size_t pitch, 
+    size_t width, size_t height,
     size_t component, size_t bitDepth,
     int numX, int denX,
     size_t x0, size_t x, size_t y)
@@ -65,17 +177,17 @@ inline float accumRowRGB(std::uint8_t *rgb,
     float startX = x0 + x * step;
     float endX = startX + step;
     if ((x * denX) % numX != 0) {
-        size_t coord = Jpeg::getPixelCoord(std::floor(startX), y, width, height, pitch);
+        size_t coord = Jpeg::getPixelCoord(std::floor(startX), y, width, height);
         std::uint8_t *sample = rgb + 3 * coord;
         row += (Jpeg::componentFromRGB(sample, component)) * (std::ceil(startX) - startX);
     }
     for (size_t ix = std::ceil(startX); ix < std::floor(endX); ix++) {
-        size_t coord = Jpeg::getPixelCoord(ix, y, width, height, pitch);
+        size_t coord = Jpeg::getPixelCoord(ix, y, width, height);
         std::uint8_t *sample = rgb + 3 * coord;
         row += Jpeg::componentFromRGB(sample, component);
     }
     if ((x * denX + denX) % numX != 0) {
-        size_t coord = Jpeg::getPixelCoord(std::floor(endX), y, width, height, pitch);
+        size_t coord = Jpeg::getPixelCoord(std::floor(endX), y, width, height);
         std::uint8_t *sample = rgb + 3 * coord;
         row += (Jpeg::componentFromRGB(sample, component)) * (endX - std::ceil(endX));
     }
@@ -83,7 +195,7 @@ inline float accumRowRGB(std::uint8_t *rgb,
 }
 
 inline float accumBlockRGB(std::uint8_t *rgb,
-    size_t width, size_t height, size_t pitch, 
+    size_t width, size_t height, 
     size_t component, size_t bitDepth,
     int numX, int denX,
     int numY, int denY,
@@ -95,13 +207,13 @@ inline float accumBlockRGB(std::uint8_t *rgb,
     float startY = y0 + y * step;
     float endY = startY + step;
     if ((y * denY) % numY != 0) {
-        block += (std::ceil(startY) - startY) * accumRowRGB(rgb, width, height, pitch, component, bitDepth, numX, denX, x0, x, std::floor(startY));
+        block += (std::ceil(startY) - startY) * accumRowRGB(rgb, width, height, component, bitDepth, numX, denX, x0, x, std::floor(startY));
     }
     for (size_t iy = std::ceil(startY); iy < std::floor(endY); iy++) {
-        block += accumRowRGB(rgb, width, height, pitch, component, bitDepth, numX, denX, x0, x, iy);
+        block += accumRowRGB(rgb, width, height, component, bitDepth, numX, denX, x0, x, iy);
     }
     if ((y * denY + denY) % numY != 0) {
-        block += (endY - std::ceil(endY)) * accumRowRGB(rgb, width, height, pitch, component, bitDepth, numX, denX, x0, x, std::floor(endY));
+        block += (endY - std::ceil(endY)) * accumRowRGB(rgb, width, height, component, bitDepth, numX, denX, x0, x, std::floor(endY));
     }
     return block / step;
 }
@@ -142,7 +254,7 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
         size_t mcuInputStartX = xMcu * mcuWidth;
         size_t mcuOutputStart = settings.mcuSize * (yMcu * settings.numMcus.first + xMcu);
         /* Iterate each component */
-        for (size_t iComp = 0; iComp < settings.numComponents; iComp++) {
+        for (size_t iComp = 0; iComp < settings.components.size(); iComp++) {
             int numX = settings.components[iComp].sampling.first;
             int numY = settings.components[iComp].sampling.second;
             /* Number of pixels of the input image to be scanned over for each block in this component */
@@ -159,14 +271,16 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
                 /* Iterate over each output sample */
                 for (size_t ox = 0; ox < JPEG_BLOCK_ROW; ox++) {
                 for (size_t oy = 0; oy < JPEG_BLOCK_ROW; oy++) {
-                    int sample = (int)accumBlockRGB(rgb,
-                        settings.size.first, settings.size.second, rowPitch,
+                    int sample = (int)std::round(accumBlockRGB(rgb,
+                        settings.size.first, settings.size.second,
                         iComp, settings.bitDepth,
                         numX, denX, numY, denY,
-                        blockInputStartX, blockInputStartY, ox, oy);
+                        blockInputStartX, blockInputStartY, ox, oy));
                     sample = std::max(0, std::min((1 << settings.bitDepth) - 1, sample));
                     sample -= 1 << (settings.bitDepth - 1);
-                    tBlock[oy * JPEG_BLOCK_ROW + ox] = sample;
+                    const size_t index = oy * JPEG_BLOCK_ROW + ox;
+                    // std::cout << index << ": " << sample << std::endl;
+                    tBlock[index] = sample;
                 }
                 }
                 /* Row-wise DCTs */
@@ -192,7 +306,7 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
 void Jpeg::Jpeg::encodeDeltas()
 {
     /* Iterate every component */
-    for (size_t iComp = 0; iComp < settings.numComponents; iComp++) {
+    for (size_t iComp = 0; iComp < settings.components.size(); iComp++) {
         int predictor = 0;
         /* Iterate over every MCU */
         for (size_t iMcu = 0; iMcu < settings.numMcus.first * settings.numMcus.second; iMcu++) {
@@ -209,4 +323,363 @@ void Jpeg::Jpeg::encodeDeltas()
             }
         }
     }
+}
+
+using split_t = std::pair<std::uint8_t, std::uint16_t>;
+
+split_t splitNumber(std::int16_t number)
+{
+    if (number == 0) {
+        return split_t(0, 0);
+    }
+    std::uint16_t anum = number;
+    if (number < 0) {
+        anum = -anum;
+        number--;
+    }
+    std::uint8_t bits = BitManip::msbSet(anum) + 1;
+    anum = number & ((1 << bits) - 1);
+    return split_t(bits, anum);
+}
+
+using block_t = std::vector<split_t>;
+using mcu_t = std::vector<block_t>;
+
+void createJpegHuffmanCodes(
+    Jpeg::codes_t& codeList,
+    std::vector<mcu_t>& mcus,
+    Jpeg::JpegSettings& settings)
+{
+    size_t maxDc = 0, maxAc = 0;
+    for (auto it = settings.components.begin(); it != settings.components.end(); it++) {
+        maxDc = std::max(maxDc, it->dcTable);
+        maxAc = std::max(maxAc, it->acTable);
+    }
+    maxDc++;
+    maxAc++;
+    using ftable_t = std::map<int, int>;
+    using ftables = std::vector<ftable_t>;
+    ftables dcFreq(maxDc, ftable_t()), acFreq(maxAc, ftable_t());
+    ftable_t *dcTable, *acTable;
+    for (auto itMcu = mcus.begin(); itMcu != mcus.end(); itMcu++) {
+        size_t compP1 = 0; // Current component plus 1
+        mcu_t& mcu = *itMcu;
+        for (size_t iBlock = 0; iBlock < settings.mcuSize; iBlock++) {
+            if (compP1 < settings.components.size() && iBlock == settings.componentOffsets[compP1]) {
+                compP1++;
+                dcTable = &(dcFreq[settings.components[compP1 - 1].dcTable]);
+                acTable = &(acFreq[settings.components[compP1 - 1].acTable]);
+            }
+            block_t& block = mcu[iBlock];
+            /* Get DC */
+            split_t dc = block[0];
+            dcTable->insert(std::pair<int, int>(dc.first, 1));
+            (*dcTable)[dc.first]++;
+            /* Get AC */
+            for (size_t i = 1; i < block.size(); i++) {
+                split_t ac = block[i];
+                acTable->insert(std::pair<int, int>(ac.first, 1));
+                (*acTable)[ac.first]++;
+            }
+        }
+    }
+    codeList.first.clear();
+    for (auto it = dcFreq.begin(); it != dcFreq.end(); it++) {
+        // for (int i = 0; i <= 11; i++) {
+            // it->insert(std::pair<int, int>(i, 1));
+        // }
+        it->insert(std::pair<int, int>(INT_MAX, 0));
+        codeList.first.push_back(Huffman::HuffmanCode(*it, 16));
+    }
+    codeList.second.clear();
+    for (auto it = acFreq.begin(); it != acFreq.end(); it++) {
+        // for (int i = 0; i < 16; i++) {
+            // for (int j = 1; j <= 10; j++) {
+                // it->insert(std::pair<int, int>((i << 4) | j, 1));
+            // }
+        // }
+        // it->insert(std::pair<int, int>(0, 1));
+        // it->insert(std::pair<int, int>(0xF0, 1));
+        it->insert(std::pair<int, int>(INT_MAX, 0));
+        codeList.second.push_back(Huffman::HuffmanCode(*it, 16));
+    }
+}
+
+Huffman::HuffmanCode fromDefault(const std::int16_t table[SYMBOL_LENGTHS][SYMBOL_CAP])
+{
+    std::vector<std::vector<int>> symbolsList;
+    for (size_t i = 0; i < SYMBOL_LENGTHS; i++) {
+        std::vector<int> ofLength;
+        for (size_t j = 0; j < SYMBOL_CAP; j++) {
+            if (table[i][j] == -1) {
+                break;
+            }
+            ofLength.push_back(table[i][j]);
+        }
+        symbolsList.push_back(ofLength);
+    }
+    return Huffman::HuffmanCode(symbolsList);
+}
+
+void setupDefaultEncodingCodes()
+{
+    std::vector<Huffman::HuffmanCode>& dcTables = defaultEncodingCodes.first;
+    if (dcTables.empty()) {
+        dcTables.push_back(fromDefault(defaultDcLuminance));
+        dcTables.push_back(fromDefault(defaultDcChrominance));
+    }
+    std::vector<Huffman::HuffmanCode>& acTables = defaultEncodingCodes.second;
+    if (acTables.empty()) {
+        acTables.push_back(fromDefault(defaultAcLuminance));
+        acTables.push_back(fromDefault(defaultAcChrominance));
+        
+    }
+}
+
+void Jpeg::Jpeg::encodeCompressed(BitBuffer::BitBufferOut& dst)
+{
+    std::vector<mcu_t> mcus;
+    for (size_t iMcu = 0; iMcu < settings.numMcus.first * settings.numMcus.second; iMcu++) {
+        mcu_t mcu;
+        for (size_t iBlock = 0; iBlock < settings.mcuSize; iBlock++) {
+            size_t blockNum = iMcu * settings.mcuSize + iBlock;
+            block_t block;
+            /* DC component */
+            block.push_back(splitNumber(blocks[blockNum][0]));
+            /* AC components */
+            size_t leadingZeros = 0;
+            size_t lastInserted = 1;
+            for (size_t i = 1; i < JPEG_BLOCK_SIZE; i++) {
+                if (blocks[blockNum][i] != 0) {
+                    while (leadingZeros > 15) {
+                        block.push_back(split_t(0xF0, 0));
+                        leadingZeros -= 16;
+                    }
+                    split_t entry = splitNumber(blocks[blockNum][i]);
+                    entry.first |= leadingZeros << 4;
+                    leadingZeros = 0;
+                    block.push_back(entry);
+                    lastInserted = i + 1;
+                }
+                else {
+                    leadingZeros++;
+                }
+            }
+            if (lastInserted != JPEG_BLOCK_SIZE) {
+                block.push_back(split_t(0, 0));
+            }
+            mcu.push_back(block);
+        }
+        mcus.push_back(mcu);
+    }
+    
+    /* Get appropriate huffman codes */
+    codes_t& huffmanCodes = settings.huffmanCodes;
+    switch ((settings.compressionFlags & flagHuffmanMask)) {
+        case flagHuffmanOptimal:
+            createJpegHuffmanCodes(huffmanCodes, mcus, settings);
+            break;
+        case flagHuffmanDefault:
+            setupDefaultEncodingCodes();
+            huffmanCodes = defaultEncodingCodes;
+    }
+    
+    size_t maxDc = 0, maxAc = 0;
+    for (auto it = settings.components.begin(); it != settings.components.end(); it++) {
+        JpegComponent& comp = *it;
+        maxDc = std::max(maxDc, comp.dcTable);
+        maxAc = std::max(maxAc, comp.acTable);
+    }
+    maxDc++;
+    maxAc++;
+    if (maxDc > huffmanCodes.first.size()) {
+        throw JpegEncodingException("Not enough DC Huffman codes");
+    }
+    if (maxAc > huffmanCodes.first.size()) {
+        throw JpegEncodingException("Not enough AC Huffman codes");
+    }
+    
+    std::stringstream strstream;
+    BitBuffer::BitBufferOut bout(strstream);
+    
+    for (size_t iMcu = 0; iMcu < settings.numMcus.first * settings.numMcus.second; iMcu++) {
+        mcu_t& mcu = mcus[iMcu];
+        size_t compP1 = 0;
+        Huffman::HuffmanCode *dcTable, *acTable;
+        for (size_t iBlock = 0; iBlock < settings.mcuSize; iBlock++) {
+            if (compP1 < settings.components.size() && iBlock == settings.componentOffsets[compP1]) {
+                compP1 += 1;
+                dcTable = &(huffmanCodes.first[settings.components[compP1 - 1].dcTable]);
+                acTable = &(huffmanCodes.second[settings.components[compP1 - 1].acTable]);
+            }
+            block_t& block = mcu[iBlock];
+            
+            /* Write DC */
+            split_t& dc = block[0];
+            // std::cout << "DC: " << (int)dc.first << ',' << dc.second << std::endl;
+            dcTable->write(dc.first, bout);
+            if (dc.first != 0) {
+                bout.write(dc.second, dc.first);
+            }
+            
+            /* Write AC */
+            for (size_t i = 1; i < block.size(); i++) {
+                split_t &ac = block[i];
+                // std::cout << "AC: " << (int)ac.first << ',' << ac.second << std::endl;
+                acTable->write(ac.first, bout);
+                if ((ac.first & 0xF) != 0) {
+                    bout.write(ac.second, ac.first & 0xF);
+                }
+            }
+        }
+    }
+    
+    bout.flush(true);
+    
+    /* Transfer from temp buffer to output while replacing 0xFF with 0xFF 0x00 */
+    std::string src = strstream.str();
+    const std::uint8_t *srcDat = reinterpret_cast<const std::uint8_t*>(src.data());
+    for (size_t i = 0; i < src.size(); i++) {
+        dst.write(srcDat[i], 8);
+        if (srcDat[i] == 0xFF) {
+            dst.write(0, 8);
+        }
+    }
+}
+
+void Jpeg::Jpeg::write(std::ostream& dst)
+{
+    std::stringstream temp;
+    BitBuffer::BitBufferOut bbo(temp);
+    encodeDeltas();
+    encodeCompressed(bbo);
+    bbo.flush(true);
+    
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){
+            0xFF, 0xD8, 0xFF, 0xE0, // SOI, APP0
+            0x00, 0x10, // length, Version
+            'J', 'F', 'I', 'F', 0
+        }), 11);
+    dst.put(settings.version.first);
+    dst.put(settings.version.second);
+    dst.put(settings.densityUnits);
+    auto be16 = htobe16(settings.density.first);
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    be16 = htobe16(settings.density.second);
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){0, 0}), 2); // Thumbnail size
+    
+    for (size_t i = 0; i < settings.numQTables; i++) {
+        int *qtable = settings.qtables[i];
+        dst.write(reinterpret_cast<const char*>((const unsigned char[]){
+            0xFF, 0xDB, 0x00, 0x43 // DQT, length
+        }), 4);
+        dst.put(i);
+        for (size_t j = 0; j < JPEG_BLOCK_SIZE; j++) {
+            dst.put(qtable[j]);
+        }
+    }
+    
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC0}), 2); // SOF
+    be16 = htobe16(8 + 3 * settings.components.size()); // Length
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    dst.put(8); // Precision
+    be16 = htobe16(settings.size.second); // Height
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    be16 = htobe16(settings.size.first); // Width
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    dst.put(settings.components.size()); // Num components
+    for (size_t i = 0; i < settings.components.size(); i++) {
+        dst.put(i + 1);
+        auto component = settings.components[i];
+        dst.put((component.sampling.first << 4) | component.sampling.second);
+        dst.put(component.qtable);
+    }
+    
+    codes_t& hc = settings.huffmanCodes;
+    for (size_t i = 0; i < hc.first.size(); i++) {
+        std::vector<size_t> lengths = hc.first[i].lengthCounts();
+        size_t length = 3 + 16;
+        if ((settings.compressionFlags & flagHuffmanMask) == flagHuffmanOptimal) {
+            lengths[lengths.size() - 1]--;
+        }
+        for (auto it2 = lengths.begin(); it2 != lengths.end(); it2++) {
+            length += *it2;
+        }
+        dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC4}), 2); // DHT
+        be16 = htobe16(length); // Length
+        dst.write(reinterpret_cast<const char*>(&be16), 2);
+        dst.put(i); // ID (class = 0 for DC)
+        for (size_t j = 0; j < 16; j++) {
+            if (j < lengths.size()) {
+                dst.put(lengths[j]);
+            }
+            else {
+                dst.put(0);
+            }
+        }
+        std::vector<std::vector<int>> byLength = hc.first[i].orderedSymbols();
+        for (auto it2 = byLength.begin(); it2 != byLength.end(); it2++) {
+            // std::cout << "lcodes:\n";
+            for (auto it3 = it2->begin(); it3 != it2->end(); it3++) {
+                if (*it3 != INT_MAX) {
+                    dst.put(*it3);
+                    // std::cout << *it3 << ", ";
+                }
+                // else {
+                    // std::cout << "Max int present\n";
+                // }
+            }
+            // std::cout << std::endl;
+        }
+    }
+    for (size_t i = 0; i < hc.second.size(); i++) {
+        std::vector<size_t> lengths = hc.second[i].lengthCounts();
+        size_t length = 3 + 16;
+        if ((settings.compressionFlags & flagHuffmanMask) == flagHuffmanOptimal) {
+            lengths[lengths.size() - 1]--;
+        }
+        for (auto it2 = lengths.begin(); it2 != lengths.end(); it2++) {
+            length += *it2;
+        }
+        dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC4}), 2); // DHT
+        be16 = htobe16(length); // Length
+        dst.write(reinterpret_cast<const char*>(&be16), 2);
+        dst.put(0x10 | i); // ID (class = 0 for DC)
+        for (size_t j = 0; j < 16; j++) {
+            if (j < lengths.size()) {
+                dst.put(lengths[j]);
+            }
+            else {
+                dst.put(0);
+            }
+        }
+        std::vector<std::vector<int>> byLength = hc.second[i].orderedSymbols();
+        for (auto it2 = byLength.begin(); it2 != byLength.end(); it2++) {
+            for (auto it3 = it2->begin(); it3 != it2->end(); it3++) {
+                if (*it3 != INT_MAX) {
+                    dst.put(*it3);
+                    // std::cout << *it3 << ", ";
+                }
+                // else {
+                    // std::cout << "Max int present\n";
+                // }
+            }
+        }
+    }
+    
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xDA}), 2); // SOS
+    be16 = htobe16(6 + 2 * settings.components.size()); // Length
+    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    dst.put(settings.components.size());
+    for (size_t i = 0; i < settings.components.size(); i++) {
+        JpegComponent& comp = settings.components[i];
+        dst.put(i + 1);
+        dst.put((comp.dcTable << 4) | comp.acTable);
+    }
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){0x00, 0x3F, 0x00}), 3); // Spec/succ, unused
+
+    dst.write(temp.str().data(), temp.str().size());
+    
+    dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xD9}), 2); // EOI
 }

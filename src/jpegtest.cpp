@@ -4,35 +4,58 @@ Jpeg testing
 */
 
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <utility>
 #include <cstdint>
+#include <sstream>
+#include <string>
+#include <cstdlib>
+#include <getopt.h>
 #include "jpegutil.hpp"
 
-#define W 16
-#define H 16
+#include "bitutil.hpp"
 
-int main() {
-    
+#define W 64
+#define H 64
+
+int main(int argc, char **argv) {
+    size_t w = W, h = H;
+    bool optimize = false;
+    int c;
+    while ((c = getopt(argc, argv, "w:h:o")) != -1) {
+        switch (c) {
+            case 'w':
+                w = atoi(optarg);
+                break;
+            case 'h':
+                h = atoi(optarg);
+                break;
+            case 'o':
+                optimize = true;
+                break;
+        }
+    }
     Jpeg::JpegSettings settings(
-        std::pair<int, int>(W, H)
+        std::pair<int, int>(w, h)
     );
+    if (optimize) {
+        settings.compressionFlags = Jpeg::flagHuffmanOptimal;
+    }
     Jpeg::Jpeg img(settings);
-    std::uint8_t rgb[W * H * 3] = {0};
-    for (size_t i = 0; i < W * H * 3; i++) {
-        rgb[i] = 0;
+    std::uint8_t *rgb = new std::uint8_t[w * h * 3]{0};
+    for (size_t i = 0; i < w * h * 3; i += 3) {
+        int pix = i / 3;
+        int y = pix / w;
+        int x = pix % w;
+        rgb[i] = (x ^ y) & 0xff;
+        rgb[i + 1] = (x) & 0xff;
+        rgb[i + 2] = (y) & 0xff;
     }
     img.encodeRGB((rgb));
-    size_t numMcus = img.settings.numMcus.first * img.settings.numMcus.second;
-    for (int i = 0; i < numMcus; i++) {
-        for (int j = 0; j < img.settings.mcuSize; j++) {
-            std::cout << i << "," << j << ": " << (int)img.blocks[img.settings.mcuSize * i + j][0] << std::endl;
-        }
-    }
-    img.encodeDeltas();
-    for (int i = 0; i < numMcus; i++) {
-        for (int j = 0; j < img.settings.mcuSize; j++) {
-            std::cout << i << "," << j << ": " << (int)img.blocks[img.settings.mcuSize * i + j][0] << std::endl;
-        }
-    }
+    std::ofstream ss("test.jpeg", std::ios_base::out | std::ios_base::binary);
+    img.write(ss);
+    ss.close();
+    delete[] rgb;
     return 0;
 }

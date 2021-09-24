@@ -1,5 +1,9 @@
 /*
 jpegutil.hpp
+Yaakov Schectman, 2021
+A utility specifically for JPEG encoding
+Only 8-bit precision, non-progressive currently supported,
+but frankly, that's all you'd normally need
 */
 
 #ifndef _JPEGUTIL_HPP
@@ -12,9 +16,9 @@ jpegutil.hpp
 #include <algorithm>
 #include <vector>
 
-#define JPEG_MAX_COMPONENTS 5
+#include "bitutil.hpp"
 
-#define JPEG_FLAG_OPTIMIZE_HUFFMAN_CODES 1
+#define JPEG_MAX_COMPONENTS 5
 
 #define JPEG_BLOCK_SIZE 64
 #define JPEG_BLOCK_ROW 8
@@ -23,10 +27,17 @@ jpegutil.hpp
 
 namespace Jpeg {
     
+    /* Constant tables used for operations */
     extern const int defaultLuminanceQTable[JPEG_BLOCK_SIZE];
     extern const int defaultChrominanceQTable[JPEG_BLOCK_SIZE];
     extern const float dctCoeffs[JPEG_DCT_COEFF_SIZE];
     extern const size_t zigzag[JPEG_BLOCK_SIZE];
+    
+    /* Flags */
+    const int flagHuffmanDefault = 0;
+    const int flagHuffmanProvided = 1;
+    const int flagHuffmanOptimal = 2;
+    const int flagHuffmanMask = 3;
 
     enum JpegDensityUnits {
         DPI = 1,
@@ -52,6 +63,8 @@ namespace Jpeg {
                 acTable {acTable}
             {}
     };
+    
+    using codes_t = std::pair<std::vector<Huffman::HuffmanCode>, std::vector<Huffman::HuffmanCode>>;
 
     /*
     Data object to hold settings for JPEG encoding and metadata
@@ -60,7 +73,6 @@ namespace Jpeg {
         private:
             void init();
         public:
-            size_t numComponents;
             std::vector<JpegComponent> components;
             std::pair<int, int> size;
             JpegDensityUnits densityUnits;
@@ -72,35 +84,28 @@ namespace Jpeg {
             int qtables[JPEG_MAX_COMPONENTS][JPEG_BLOCK_SIZE];
             std::pair<int, int> version;
             int resetInterval;
+            codes_t huffmanCodes;
 
             std::pair<int, int> mcuScale;
             std::pair<int, int> numMcus;
             size_t componentOffsets[JPEG_MAX_COMPONENTS];
             size_t mcuSize;
             
+            /*
+            bitDepth and resetInterval are not (yet) supported as non-default values
+            */
             JpegSettings(
-                std::vector<JpegComponent> components,
                 std::pair<int, int> size,
+                const std::vector<JpegComponent> *components = nullptr,
                 JpegDensityUnits densityUnits = DPI,
                 std::pair<int, int> density = std::pair<int, int>(1, 1),
-                int bitDepth = 8,
                 int quality = 50,
-                int compressionFlags = 0,
+                int compressionFlags = flagHuffmanDefault,
                 int numQTables = 2,
                 const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},
                 std::pair<int, int> version = std::pair<int, int>(1, 1),
-                int resetInterval = 0);
-                
-            JpegSettings(
-                std::pair<int, int> size,
-                JpegDensityUnits densityUnits = DPI,
-                std::pair<int, int> density = std::pair<int, int>(1, 1),
+                const codes_t *huffmanCodes = nullptr,
                 int bitDepth = 8,
-                int quality = 50,
-                int compressionFlags = 0,
-                int numQTables = 2,
-                const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},
-                std::pair<int, int> version = std::pair<int, int>(1, 1),
                 int resetInterval = 0);
     };
     
@@ -111,17 +116,44 @@ namespace Jpeg {
     */
     class Jpeg {
         public:
-            const JpegSettings& settings;
+            JpegSettings settings;
             std::int16_t (*blocks)[JPEG_BLOCK_SIZE];
             void encodeDeltas();
+            void encodeCompressed(BitBuffer::BitBufferOut& dst);
         public:
-            Jpeg(const JpegSettings& jpegSettings) :
+            Jpeg(JpegSettings jpegSettings) :
                 settings {jpegSettings},
                 blocks {new std::int16_t[jpegSettings.numMcus.first * jpegSettings.numMcus.second * jpegSettings.mcuSize][JPEG_BLOCK_SIZE]}
             {}
             
+            Jpeg(const Jpeg& other);
+            
+            Jpeg& operator=(const Jpeg& other);
+            
             ~Jpeg();
-            void encodeRGB(std::uint8_t *rgb);            
+            
+            /*
+            Populate this JPEG with RGB data
+            */
+            void encodeRGB(std::uint8_t *rgb);
+            
+            /*
+            Compress and write out to a stream
+            */
+            void write(std::ostream& dst);
+    };
+    
+    /*
+    Exception raised when an error in JPEG encoding is encountered
+    */
+    class JpegEncodingException : public std::exception {
+        private:
+            const char* message;
+        public:
+            JpegEncodingException(std::string message) : message{("Jpeg Encoding Exception: " + message).c_str()} {}
+            virtual const char* what() {
+                return message;
+            }
     };
     
     /*
@@ -173,11 +205,11 @@ namespace Jpeg {
     }
     
 
-    inline size_t getPixelCoord(size_t x, size_t y, size_t width, size_t height, size_t pitch)
+    inline size_t getPixelCoord(size_t x, size_t y, size_t width, size_t height)
     {
         x = std::min(x, width - 1);
         y = std::min(y, height - 1);
-        return y * pitch + x;
+        return y * width + x;
     }
 
     template <class sample_t>
