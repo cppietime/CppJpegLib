@@ -144,7 +144,7 @@ const size_t Jpeg::zigzag[JPEG_BLOCK_SIZE] = {
      53, 60, 61, 54, 47, 55, 62, 63
 };
 
-const int Jpeg::defaultLuminanceQTable[JPEG_BLOCK_SIZE] = {
+const Jpeg::dqt_t Jpeg::defaultLuminanceQTable[JPEG_BLOCK_SIZE] = {
     16, 11, 10, 16,  24,  40,  51,  61,
     12, 12, 14, 19,  26,  58,  60,  55,
     14, 13, 16, 24,  40,  57,  69,  56,
@@ -155,7 +155,7 @@ const int Jpeg::defaultLuminanceQTable[JPEG_BLOCK_SIZE] = {
     72, 92, 95, 98, 112, 100, 103,  99
 };
 
-const int Jpeg::defaultChrominanceQTable[JPEG_BLOCK_SIZE] = {
+const Jpeg::dqt_t Jpeg::defaultChrominanceQTable[JPEG_BLOCK_SIZE] = {
     17, 18, 24, 47, 99, 99, 99, 99,
     18, 21, 26, 66, 99, 99, 99, 99,
     24, 26, 56, 99, 99, 99, 99, 99,
@@ -220,9 +220,9 @@ inline float accumBlockRGB(std::uint8_t *rgb,
 
 const float inverseSqrtTwo = 0.7071067811865476;
 
-void DCT8(std::int16_t *data, size_t stride)
+void DCT8(Jpeg::dct_t *data, size_t stride)
 {
-    std::int16_t buffer[JPEG_DCT_SIZE];
+    Jpeg::dct_t buffer[JPEG_DCT_SIZE];
     for(size_t u = 0; u < JPEG_DCT_SIZE; u++) {
         float point = 0;
         for(size_t x = 0; x < JPEG_DCT_SIZE; x++) {
@@ -245,7 +245,7 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
     size_t mcuHeight = denY * JPEG_BLOCK_ROW;
     size_t rowPitch = mcuWidth * settings.numMcus.first;
     
-    std::int16_t tBlock[JPEG_BLOCK_SIZE];
+    dct_t tBlock[JPEG_BLOCK_SIZE];
     
     /* Iterate each MCU */
     for (size_t yMcu = 0; yMcu < settings.numMcus.second; yMcu++) {
@@ -261,7 +261,7 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
             size_t blockWidth = JPEG_BLOCK_ROW * numX / denX;
             size_t blockHeight = JPEG_BLOCK_ROW * numY / denY;
             size_t compOutputStart = settings.componentOffsets[iComp] + mcuOutputStart;
-            const int *qTable = settings.qtables[settings.components[iComp].qtable];
+            const dqt_t *qTable = settings.qtables[settings.components[iComp].qtable];
             /* Iterate each block */
             for (size_t yBlock = 0; yBlock < numY; yBlock++) {
             for (size_t xBlock = 0; xBlock < numX; xBlock++) {
@@ -271,12 +271,12 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
                 /* Iterate over each output sample */
                 for (size_t ox = 0; ox < JPEG_BLOCK_ROW; ox++) {
                 for (size_t oy = 0; oy < JPEG_BLOCK_ROW; oy++) {
-                    int sample = (int)std::round(accumBlockRGB(rgb,
+                    dct_t sample = (dct_t)std::round(accumBlockRGB(rgb,
                         settings.size.first, settings.size.second,
                         iComp, settings.bitDepth,
                         numX, denX, numY, denY,
                         blockInputStartX, blockInputStartY, ox, oy));
-                    sample = std::max(0, std::min((1 << settings.bitDepth) - 1, sample));
+                    sample = std::max(dct_t{0}, std::min((dct_t)(1 << settings.bitDepth) - 1, sample));
                     sample -= 1 << (settings.bitDepth - 1);
                     const size_t index = oy * JPEG_BLOCK_ROW + ox;
                     // std::cout << index << ": " << sample << std::endl;
@@ -294,7 +294,7 @@ void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
                 /* Copy zigzagged and quantized to the block */
                 for (size_t i = 0; i < JPEG_BLOCK_SIZE; i++) {
                     size_t index = zigzag[i];
-                    blocks[blockNum][i] = (std::int16_t)std::round((float)tBlock[index] / qTable[index]);
+                    blocks[blockNum][i] = (dct_t)std::round((float)tBlock[index] / qTable[index]);
                 }
             }
             }
@@ -307,7 +307,7 @@ void Jpeg::Jpeg::encodeDeltas()
 {
     /* Iterate every component */
     for (size_t iComp = 0; iComp < settings.components.size(); iComp++) {
-        int predictor = 0;
+        dct_t predictor = 0;
         /* Iterate over every MCU */
         for (size_t iMcu = 0; iMcu < settings.numMcus.first * settings.numMcus.second; iMcu++) {
             if (settings.resetInterval != 0 && iMcu % settings.resetInterval == 0) {
@@ -316,8 +316,8 @@ void Jpeg::Jpeg::encodeDeltas()
             /* Iterate over every block in MCU of this component */
             size_t numBlocks = settings.components[iComp].sampling.first * settings.components[iComp].sampling.second;
             for (size_t iBlock = 0; iBlock < numBlocks; iBlock++) {
-                std::int16_t *block = blocks[iBlock + settings.componentOffsets[iComp] + iMcu * settings.mcuSize];
-                int delta = block[0] - predictor;
+                dct_t *block = blocks[iBlock + settings.componentOffsets[iComp] + iMcu * settings.mcuSize];
+                dct_t delta = block[0] - predictor;
                 predictor = block[0];
                 block[0] = delta;
             }
@@ -327,7 +327,7 @@ void Jpeg::Jpeg::encodeDeltas()
 
 using split_t = std::pair<std::uint8_t, std::uint16_t>;
 
-split_t splitNumber(std::int16_t number)
+split_t splitNumber(Jpeg::dct_t number)
 {
     if (number == 0) {
         return split_t(0, 0);
@@ -408,6 +408,7 @@ void createJpegHuffmanCodes(
 Huffman::HuffmanCode fromDefault(const std::int16_t table[SYMBOL_LENGTHS][SYMBOL_CAP])
 {
     std::vector<std::vector<int>> symbolsList;
+    symbolsList.reserve(SYMBOL_LENGTHS);
     for (size_t i = 0; i < SYMBOL_LENGTHS; i++) {
         std::vector<int> ofLength;
         for (size_t j = 0; j < SYMBOL_CAP; j++) {
@@ -439,8 +440,11 @@ void setupDefaultEncodingCodes()
 void Jpeg::Jpeg::encodeCompressed(BitBuffer::BitBufferOut& dst)
 {
     std::vector<mcu_t> mcus;
-    for (size_t iMcu = 0; iMcu < settings.numMcus.first * settings.numMcus.second; iMcu++) {
+    size_t numMcus = settings.numMcus.first * settings.numMcus.second;
+    mcus.reserve(numMcus);
+    for (size_t iMcu = 0; iMcu < numMcus; iMcu++) {
         mcu_t mcu;
+        mcu.reserve(settings.mcuSize);
         for (size_t iBlock = 0; iBlock < settings.mcuSize; iBlock++) {
             size_t blockNum = iMcu * settings.mcuSize + iBlock;
             block_t block;
@@ -570,7 +574,7 @@ void Jpeg::Jpeg::write(std::ostream& dst)
     dst.write(reinterpret_cast<const char*>((const unsigned char[]){0, 0}), 2); // Thumbnail size
     
     for (size_t i = 0; i < settings.numQTables; i++) {
-        int *qtable = settings.qtables[i];
+        const dqt_t *qtable = settings.qtables[i];
         dst.write(reinterpret_cast<const char*>((const unsigned char[]){
             0xFF, 0xDB, 0x00, 0x43 // DQT, length
         }), 4);

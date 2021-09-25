@@ -27,9 +27,13 @@ but frankly, that's all you'd normally need
 
 namespace Jpeg {
     
+    using codes_t = std::pair<std::vector<Huffman::HuffmanCode>, std::vector<Huffman::HuffmanCode>>;
+    using dqt_t = std::uint16_t;
+    using dct_t = std::int32_t;
+    
     /* Constant tables used for operations */
-    extern const int defaultLuminanceQTable[JPEG_BLOCK_SIZE];
-    extern const int defaultChrominanceQTable[JPEG_BLOCK_SIZE];
+    extern const dqt_t defaultLuminanceQTable[JPEG_BLOCK_SIZE];
+    extern const dqt_t defaultChrominanceQTable[JPEG_BLOCK_SIZE];
     extern const float dctCoeffs[JPEG_DCT_COEFF_SIZE];
     extern const size_t zigzag[JPEG_BLOCK_SIZE];
     
@@ -63,8 +67,6 @@ namespace Jpeg {
                 acTable {acTable}
             {}
     };
-    
-    using codes_t = std::pair<std::vector<Huffman::HuffmanCode>, std::vector<Huffman::HuffmanCode>>;
 
     /*
     Data object to hold settings for JPEG encoding and metadata
@@ -81,7 +83,7 @@ namespace Jpeg {
             int quality;
             int compressionFlags;
             int numQTables;
-            int qtables[JPEG_MAX_COMPONENTS][JPEG_BLOCK_SIZE];
+            dqt_t qtables[JPEG_MAX_COMPONENTS][JPEG_BLOCK_SIZE];
             std::pair<int, int> version;
             int resetInterval;
             codes_t huffmanCodes;
@@ -102,7 +104,10 @@ namespace Jpeg {
                 int quality = 50,
                 int compressionFlags = flagHuffmanDefault,
                 int numQTables = 2,
-                const int *qtables[JPEG_MAX_COMPONENTS] = (const int* [JPEG_MAX_COMPONENTS]){defaultLuminanceQTable, defaultChrominanceQTable, nullptr},
+                const dqt_t *qtables[JPEG_MAX_COMPONENTS] = (const dqt_t* [JPEG_MAX_COMPONENTS]){
+                    defaultLuminanceQTable,
+                    defaultChrominanceQTable
+                },
                 std::pair<int, int> version = std::pair<int, int>(1, 1),
                 const codes_t *huffmanCodes = nullptr,
                 int bitDepth = 8,
@@ -117,13 +122,17 @@ namespace Jpeg {
     class Jpeg {
         public:
             JpegSettings settings;
-            std::int16_t (*blocks)[JPEG_BLOCK_SIZE];
+            dct_t (*blocks)[JPEG_BLOCK_SIZE];
             void encodeDeltas();
             void encodeCompressed(BitBuffer::BitBufferOut& dst);
         public:
             Jpeg(JpegSettings jpegSettings) :
                 settings {jpegSettings},
-                blocks {new std::int16_t[jpegSettings.numMcus.first * jpegSettings.numMcus.second * jpegSettings.mcuSize][JPEG_BLOCK_SIZE]}
+                blocks {new dct_t[
+                        jpegSettings.numMcus.first *
+                        jpegSettings.numMcus.second *
+                        jpegSettings.mcuSize
+                    ][JPEG_BLOCK_SIZE]}
             {}
             
             Jpeg(const Jpeg& other);
@@ -150,7 +159,8 @@ namespace Jpeg {
         private:
             const char* message;
         public:
-            JpegEncodingException(std::string message) : message{("Jpeg Encoding Exception: " + message).c_str()} {}
+            JpegEncodingException(std::string message) :
+                message{("Jpeg Encoding Exception: " + message).c_str()} {}
             virtual const char* what() {
                 return message;
             }

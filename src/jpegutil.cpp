@@ -17,7 +17,7 @@ Jpeg::JpegSettings::JpegSettings(
         int quality,
         int compressionFlags,
         int numQTables,
-        const int *qtables[JPEG_MAX_COMPONENTS],
+        const dqt_t *qtables[JPEG_MAX_COMPONENTS],
         std::pair<int, int> version,
         const codes_t *huffmanCodes,
         int bitDepth,
@@ -105,7 +105,7 @@ void Jpeg::JpegSettings::init()
 
 Jpeg::Jpeg::Jpeg(const Jpeg& other) :
     settings {other.settings},
-    blocks {new std::int16_t[other.settings.numMcus.first * other.settings.numMcus.second * other.settings.mcuSize][JPEG_BLOCK_SIZE]}
+    blocks {new dct_t[other.settings.numMcus.first * other.settings.numMcus.second * other.settings.mcuSize][JPEG_BLOCK_SIZE]}
 {
     std::copy(&other.blocks[0][0], &other.blocks[0][0] + JPEG_BLOCK_SIZE * settings.numMcus.first * settings.numMcus.second * settings.mcuSize, &blocks[0][0]);
 }
@@ -115,7 +115,7 @@ Jpeg::Jpeg& Jpeg::Jpeg::operator=(const Jpeg& other)
     delete[] blocks;
     settings = other.settings;
     size_t size = settings.numMcus.first * settings.numMcus.second * settings.mcuSize;
-    blocks = new std::int16_t[size][JPEG_BLOCK_SIZE];
+    blocks = new dct_t[size][JPEG_BLOCK_SIZE];
     std::copy(&other.blocks[0][0], &other.blocks[0][0] + JPEG_BLOCK_SIZE * size, &blocks[0][0]);
     return *this;
 }
