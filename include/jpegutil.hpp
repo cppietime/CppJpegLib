@@ -144,7 +144,7 @@ namespace Jpeg {
             /*
             Populate this JPEG with RGB data
             */
-            void encodeRGB(std::uint8_t *rgb);
+            void encodeRGB(const std::uint8_t *rgb);
             
             /*
             Compress and write out to a stream

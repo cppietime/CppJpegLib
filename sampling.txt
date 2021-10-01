@@ -1,0 +1,30 @@
+43239
+
+1 -> [i]
+1/2 -> ([2i] + [2i + 1]) / 2
+1/3 -> ([3i] + [3i + 1] + [3i + 2]) / 3
+etc
+
+ratio in (0, 1]
+step = 1 / ratio
+ith step:
+start = i * step
+end = (i + 1) * step
+x = start
+sum = 0
+
+pre-whole segment:
+if x not integer
+sum += (1 - frac(x)) * [floor(x)]
+x = ceil(x)
+
+whole segment:
+while x < floor(end):
+sum += [x]
+x += 1
+
+post-whole segment:
+if x != end:
+sum += frac(end) * [x]
+
+result = sum * ratio

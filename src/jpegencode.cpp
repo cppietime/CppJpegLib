@@ -166,7 +166,7 @@ const Jpeg::dqt_t Jpeg::defaultChrominanceQTable[JPEG_BLOCK_SIZE] = {
     99, 99, 99, 99, 99, 99, 99, 99
 };
 
-inline float accumRowRGB(std::uint8_t *rgb,
+inline float accumRowRGB(const std::uint8_t *rgb,
     size_t width, size_t height,
     size_t component, size_t bitDepth,
     int numX, int denX,
@@ -178,23 +178,23 @@ inline float accumRowRGB(std::uint8_t *rgb,
     float endX = startX + step;
     if ((x * denX) % numX != 0) {
         size_t coord = Jpeg::getPixelCoord(std::floor(startX), y, width, height);
-        std::uint8_t *sample = rgb + 3 * coord;
+        const std::uint8_t *sample = rgb + 3 * coord;
         row += (Jpeg::componentFromRGB(sample, component)) * (std::ceil(startX) - startX);
     }
     for (size_t ix = std::ceil(startX); ix < std::floor(endX); ix++) {
         size_t coord = Jpeg::getPixelCoord(ix, y, width, height);
-        std::uint8_t *sample = rgb + 3 * coord;
+        const std::uint8_t *sample = rgb + 3 * coord;
         row += Jpeg::componentFromRGB(sample, component);
     }
     if ((x * denX + denX) % numX != 0) {
         size_t coord = Jpeg::getPixelCoord(std::floor(endX), y, width, height);
-        std::uint8_t *sample = rgb + 3 * coord;
+        const std::uint8_t *sample = rgb + 3 * coord;
         row += (Jpeg::componentFromRGB(sample, component)) * (endX - std::ceil(endX));
     }
     return row / step;
 }
 
-inline float accumBlockRGB(std::uint8_t *rgb,
+inline float accumBlockRGB(const std::uint8_t *rgb,
     size_t width, size_t height, 
     size_t component, size_t bitDepth,
     int numX, int denX,
@@ -236,7 +236,7 @@ void DCT8(Jpeg::dct_t *data, size_t stride)
     }
 }
 
-void Jpeg::Jpeg::encodeRGB(std::uint8_t *rgb)
+void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
 {
     int denX = settings.mcuScale.first;
     int denY = settings.mcuScale.second;

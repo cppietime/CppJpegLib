@@ -85,7 +85,7 @@ Jpeg::JpegSettings::JpegSettings(
 void Jpeg::JpegSettings::init()
 {
     int maxX = 0, maxY = 0;
-    float factor = (quality <= 50) ? quality / 50.0 : quality - 50;
+    float factor = (quality <= 50) ? 50.0 / quality : 1.0 / (quality - 50);
     // std::cout << "Factor=" << factor << std::endl;
     for (int i = 0; i < components.size(); i ++) {
         componentOffsets[i] = mcuSize;
