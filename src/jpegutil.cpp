@@ -35,9 +35,6 @@ Jpeg::JpegSettings::JpegSettings(
         if (components != nullptr) {
             this->components = *components;
         }
-        if (huffmanCodes != nullptr) {
-            this->huffmanCodes = *huffmanCodes;
-        }
         else {
             JpegComponent defaultComponents[3] = {
                 JpegComponent(std::pair<int, int>(2, 2), 0, 0, 0),
@@ -45,6 +42,9 @@ Jpeg::JpegSettings::JpegSettings(
                 JpegComponent(std::pair<int, int>(1, 1), 1, 1, 1)
             };
             this->components = std::vector<JpegComponent>(defaultComponents, defaultComponents + 3);
+        }
+        if (huffmanCodes != nullptr) {
+            this->huffmanCodes = *huffmanCodes;
         }
         for (int i = 0; i < numQTables; i++) {
             std::copy(qtables[i], qtables[i] + JPEG_BLOCK_SIZE, this->qtables[i]);
