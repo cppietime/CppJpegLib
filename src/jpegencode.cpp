@@ -8,6 +8,7 @@ jpegencode.cpp
 #include <cstdint>
 #include <endian.h>
 #include <climits>
+#include <omp.h>
 #include "bitutil.hpp"
 #include "jpegutil.hpp"
 
@@ -194,6 +195,24 @@ inline float accumRowRGB(const std::uint8_t *rgb,
     return row / step;
 }
 
+inline float accumRowRGBi(const std::uint8_t *rgb,
+    size_t width, size_t height,
+    size_t component, size_t bitDepth,
+    int numX, int denX,
+    size_t x0, size_t x, size_t y)
+{
+    float row = 0;
+    int step = denX / numX;
+    size_t startX = x0 + x * step;
+    size_t endX = startX + step;
+    for (size_t ix = startX; ix < endX; ix++) {
+        size_t coord = Jpeg::getPixelCoord(ix, y, width, height);
+        const std::uint8_t *sample = rgb + 3 * coord;
+        row += Jpeg::componentFromRGB(sample, component);
+    }
+    return row / step;
+}
+
 inline float accumBlockRGB(const std::uint8_t *rgb,
     size_t width, size_t height, 
     size_t component, size_t bitDepth,
@@ -218,7 +237,44 @@ inline float accumBlockRGB(const std::uint8_t *rgb,
     return block / step;
 }
 
+inline float accumBlockRGBi(const std::uint8_t *rgb,
+    size_t width, size_t height, 
+    size_t component, size_t bitDepth,
+    int numX, int denX,
+    int numY, int denY,
+    size_t x0, size_t y0,
+    size_t x, size_t y)
+{
+    float block = 0;
+    int step = denY / numY;
+    size_t startY = y0 + y * step;
+    size_t endY = startY + step;
+    for (size_t iy = startY; iy < endY; iy++) {
+        block += accumRowRGBi(rgb, width, height, component, bitDepth, numX, denX, x0, x, iy);
+    }
+    return block / step;
+}
+
 const float inverseSqrtTwo = 0.7071067811865476;
+
+const static float dct8_scales[8] = {
+	0.353553390593273762200422,
+	0.254897789552079584470970,
+	0.270598050073098492199862,
+	0.300672443467522640271861,
+	0.353553390593273762200422,
+	0.449988111568207852319255,
+	0.653281482438188263928322,
+	1.281457723870753089398043,
+};
+
+const static float dct8_consts[5] = {
+	0.707106781186547524400844,
+	0.541196100146196984399723,
+	0.707106781186547524400844,
+	1.306562964876376527856643,
+	0.382683432365089771728460,
+};
 
 void DCT8(Jpeg::dct_t *data, size_t stride)
 {
@@ -234,6 +290,73 @@ void DCT8(Jpeg::dct_t *data, size_t stride)
     for (size_t i = 0; i < JPEG_DCT_SIZE; i++) {
         data[i * stride] = buffer[i];
     }
+    return;
+    
+    // Idea from https://web.stanford.edu/class/ee398a/handouts/lectures/07-TransformCoding.pdf#page=30
+    float v0 = data[0 * stride] + data[7 * stride];
+    float v1 = data[1 * stride] + data[6 * stride];
+    float v2 = data[2 * stride] + data[5 * stride];
+    float v3 = data[3 * stride] + data[4 * stride];
+    float v4 = data[3 * stride] - data[4 * stride];
+    float v5 = data[2 * stride] - data[5 * stride];
+    float v6 = data[1 * stride] - data[6 * stride];
+    float v7 = data[0 * stride] - data[7 * stride];
+    
+    float w0 = v0 + v3;
+    float w1 = v1 + v2;
+    float w2 = v1 - v2;
+    float w3 = v0 - v3;
+    float w4 = -(v4 + v5);
+    float w5 = v5 + v6;
+    float w6 = v6 + v7;
+    float w7 = v7;
+    
+    v0 = w0 + w1;
+    v1 = w0 - w1;
+    v2 = w2 + w3;
+    v3 = w3;
+    v4 = w4;
+    v5 = w5;
+    v6 = w6;
+    v7 = w7;
+    
+    float y = (v4 + v6) * dct8_consts[4];
+    
+    w0 = v0;
+    w1 = v1;
+    w2 = v2 * dct8_consts[0];
+    w3 = v3;
+    w4 = -y - v4 * dct8_consts[1];
+    w5 = v5 * dct8_consts[2];
+    w6 = v6 * dct8_consts[3] - y;
+    w7 = v7;
+    
+    v0 = w0;
+    v1 = w1;
+    v2 = w2 + w3;
+    v3 = w3 - w2;
+    v4 = w4;
+    v5 = w5 + w7;
+    v6 = w6;
+    v7 = w7 - w5;
+    
+    w0 = v0;
+    w1 = v1;
+    w2 = v2;
+    w3 = v3;
+    w4 = v4 + v7;
+    w5 = v5 + v6;
+    w6 = v5 - v6;
+    w7 = v7 - v4;
+    
+    data[0 * stride] = dct8_scales[0] * w0;
+    data[4 * stride] = dct8_scales[4] * w1;
+    data[2 * stride] = dct8_scales[2] * w2;
+    data[6 * stride] = dct8_scales[6] * w3;
+    data[5 * stride] = dct8_scales[5] * w4;
+    data[1 * stride] = dct8_scales[1] * w5;
+    data[7 * stride] = dct8_scales[7] * w6;
+    data[3 * stride] = dct8_scales[3] * w7;
 }
 
 void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
@@ -245,11 +368,12 @@ void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
     size_t mcuHeight = denY * JPEG_BLOCK_ROW;
     size_t rowPitch = mcuWidth * settings.numMcus.first;
     
-    dct_t tBlock[JPEG_BLOCK_SIZE];
     
     /* Iterate each MCU */
+    #pragma omp parallel for collapse(2)
     for (size_t yMcu = 0; yMcu < settings.numMcus.second; yMcu++) {
     for (size_t xMcu = 0; xMcu < settings.numMcus.first; xMcu++) {
+        dct_t tBlock[JPEG_BLOCK_SIZE];
         size_t mcuInputStartY = yMcu * mcuHeight;
         size_t mcuInputStartX = xMcu * mcuWidth;
         size_t mcuOutputStart = settings.mcuSize * (yMcu * settings.numMcus.first + xMcu);
@@ -257,6 +381,10 @@ void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
         for (size_t iComp = 0; iComp < settings.components.size(); iComp++) {
             int numX = settings.components[iComp].sampling.first;
             int numY = settings.components[iComp].sampling.second;
+            auto accumFunc = accumBlockRGB;
+            if ((denX % numX == 0) && (denY % numY == 0)) {
+                accumFunc = accumBlockRGBi;
+            }
             /* Number of pixels of the input image to be scanned over for each block in this component */
             size_t blockWidth = JPEG_BLOCK_ROW * numX / denX;
             size_t blockHeight = JPEG_BLOCK_ROW * numY / denY;
@@ -271,7 +399,7 @@ void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
                 /* Iterate over each output sample */
                 for (size_t ox = 0; ox < JPEG_BLOCK_ROW; ox++) {
                 for (size_t oy = 0; oy < JPEG_BLOCK_ROW; oy++) {
-                    dct_t sample = (dct_t)std::round(accumBlockRGB(rgb,
+                    dct_t sample = (dct_t)std::round(accumFunc(rgb,
                         settings.size.first, settings.size.second,
                         iComp, settings.bitDepth,
                         numX, denX, numY, denY,
@@ -306,6 +434,7 @@ void Jpeg::Jpeg::encodeRGB(const std::uint8_t *rgb)
 void Jpeg::Jpeg::encodeDeltas()
 {
     /* Iterate every component */
+    #pragma omp parallel for
     for (size_t iComp = 0; iComp < settings.components.size(); iComp++) {
         dct_t predictor = 0;
         /* Iterate over every MCU */
@@ -316,7 +445,7 @@ void Jpeg::Jpeg::encodeDeltas()
             /* Iterate over every block in MCU of this component */
             size_t numBlocks = settings.components[iComp].sampling.first * settings.components[iComp].sampling.second;
             for (size_t iBlock = 0; iBlock < numBlocks; iBlock++) {
-                dct_t *block = blocks[iBlock + settings.componentOffsets[iComp] + iMcu * settings.mcuSize];
+                volatile dct_t *block = blocks[iBlock + settings.componentOffsets[iComp] + iMcu * settings.mcuSize];
                 dct_t delta = block[0] - predictor;
                 predictor = block[0];
                 block[0] = delta;

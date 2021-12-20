@@ -85,7 +85,10 @@ Jpeg::JpegSettings::JpegSettings(
 void Jpeg::JpegSettings::init()
 {
     int maxX = 0, maxY = 0;
-    float factor = (quality <= 50) ? 50.0 / quality : 1.0 / (quality - 50);
+    quality = std::max(1, std::min(100, quality));
+    float factor = (quality <= 50) ?
+        (5000.0/quality) :
+        (200.0 - 2.0 * quality);
     // std::cout << "Factor=" << factor << std::endl;
     for (int i = 0; i < components.size(); i ++) {
         componentOffsets[i] = mcuSize;
@@ -95,7 +98,7 @@ void Jpeg::JpegSettings::init()
     }
     for (int i = 0; i < numQTables; i++) {
         for (int j = 0; j < JPEG_BLOCK_SIZE; j++) {
-            this->qtables[i][j] = std::max(1, std::min(255, (int)(qtables[i][j] * factor)));
+            this->qtables[i][j] = std::max(1, std::min(255, (int)std::floor((qtables[i][j] * factor + 50) / 100)));
             // std::cout << "Qtable " << i << ',' << j << ": " << this->qtables[i][j] << std::endl;
         }
     }

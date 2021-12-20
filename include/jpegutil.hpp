@@ -122,7 +122,7 @@ namespace Jpeg {
     class Jpeg {
         public:
             JpegSettings settings;
-            dct_t (*blocks)[JPEG_BLOCK_SIZE];
+            volatile dct_t (*blocks)[JPEG_BLOCK_SIZE];
             void encodeDeltas();
             void encodeCompressed(BitBuffer::BitBufferOut& dst);
         public:
