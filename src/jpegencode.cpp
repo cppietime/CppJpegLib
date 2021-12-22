@@ -6,7 +6,7 @@ jpegencode.cpp
 #include <sstream>
 #include <cmath>
 #include <cstdint>
-#include <endian.h>
+// #include <endian.h>
 #include <climits>
 #include <omp.h>
 #include "bitutil.hpp"
@@ -680,6 +680,12 @@ void Jpeg::Jpeg::encodeCompressed(BitBuffer::BitBufferOut& dst)
     }
 }
 
+void writeBe16(std::uint16_t num, std::ostream& dst)
+{
+    dst.put((std::uint8_t)(num >> 8));
+    dst.put((std::uint8_t)num);
+}
+
 void Jpeg::Jpeg::write(std::ostream& dst)
 {
     std::stringstream temp;
@@ -696,10 +702,8 @@ void Jpeg::Jpeg::write(std::ostream& dst)
     dst.put(settings.version.first);
     dst.put(settings.version.second);
     dst.put(settings.densityUnits);
-    auto be16 = htobe16(settings.density.first);
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
-    be16 = htobe16(settings.density.second);
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    writeBe16(settings.density.first, dst);
+    writeBe16(settings.density.second, dst);
     dst.write(reinterpret_cast<const char*>((const unsigned char[]){0, 0}), 2); // Thumbnail size
     
     for (size_t i = 0; i < settings.numQTables; i++) {
@@ -714,13 +718,10 @@ void Jpeg::Jpeg::write(std::ostream& dst)
     }
     
     dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC0}), 2); // SOF
-    be16 = htobe16(8 + 3 * settings.components.size()); // Length
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    writeBe16(8 + 3 * settings.components.size(), dst); // Length
     dst.put(8); // Precision
-    be16 = htobe16(settings.size.second); // Height
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
-    be16 = htobe16(settings.size.first); // Width
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    writeBe16(settings.size.second, dst); // Height
+    writeBe16(settings.size.first, dst); // Width
     dst.put(settings.components.size()); // Num components
     for (size_t i = 0; i < settings.components.size(); i++) {
         dst.put(i + 1);
@@ -740,8 +741,7 @@ void Jpeg::Jpeg::write(std::ostream& dst)
             length += *it2;
         }
         dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC4}), 2); // DHT
-        be16 = htobe16(length); // Length
-        dst.write(reinterpret_cast<const char*>(&be16), 2);
+        writeBe16(length, dst); // Length
         dst.put(i); // ID (class = 0 for DC)
         for (size_t j = 0; j < 16; j++) {
             if (j < lengths.size()) {
@@ -776,8 +776,7 @@ void Jpeg::Jpeg::write(std::ostream& dst)
             length += *it2;
         }
         dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xC4}), 2); // DHT
-        be16 = htobe16(length); // Length
-        dst.write(reinterpret_cast<const char*>(&be16), 2);
+        writeBe16(length, dst); // Length
         dst.put(0x10 | i); // ID (class = 0 for DC)
         for (size_t j = 0; j < 16; j++) {
             if (j < lengths.size()) {
@@ -802,8 +801,7 @@ void Jpeg::Jpeg::write(std::ostream& dst)
     }
     
     dst.write(reinterpret_cast<const char*>((const unsigned char[]){0xFF, 0xDA}), 2); // SOS
-    be16 = htobe16(6 + 2 * settings.components.size()); // Length
-    dst.write(reinterpret_cast<const char*>(&be16), 2);
+    writeBe16(6 + 2 * settings.components.size(), dst); // Length
     dst.put(settings.components.size());
     for (size_t i = 0; i < settings.components.size(); i++) {
         JpegComponent& comp = settings.components[i];
