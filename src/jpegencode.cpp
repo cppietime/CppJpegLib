@@ -81,7 +81,7 @@ const std::int16_t defaultAcLuminance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
      0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA,
      0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA,
      0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA,
-     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD6, 0xD8, 0xD9, 0xDA,
+     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA,
      0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA,
      0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
     -1}
@@ -114,7 +114,7 @@ const std::int16_t defaultAcChrominance[SYMBOL_LENGTHS][SYMBOL_CAP] = {
      0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA,
      0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA,
      0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA,
-     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD6, 0xD8, 0xD9, 0xDA,
+     0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA,
      0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA,
      0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA,
     -1}
@@ -278,19 +278,19 @@ const static float dct8_consts[5] = {
 
 void DCT8(Jpeg::dct_t *data, size_t stride)
 {
-    Jpeg::dct_t buffer[JPEG_DCT_SIZE];
-    for(size_t u = 0; u < JPEG_DCT_SIZE; u++) {
-        float point = 0;
-        for(size_t x = 0; x < JPEG_DCT_SIZE; x++) {
-            point += data[x * stride] * Jpeg::dctCoeffs[u * 8 + x];
-        }
-        buffer[u] = std::round(point) / 2;
-    }
-    buffer[0] *= inverseSqrtTwo;
-    for (size_t i = 0; i < JPEG_DCT_SIZE; i++) {
-        data[i * stride] = buffer[i];
-    }
-    return;
+    // Jpeg::dct_t buffer[JPEG_DCT_SIZE];
+    // for(size_t u = 0; u < JPEG_DCT_SIZE; u++) {
+        // float point = 0;
+        // for(size_t x = 0; x < JPEG_DCT_SIZE; x++) {
+            // point += data[x * stride] * Jpeg::dctCoeffs[u * 8 + x];
+        // }
+        // buffer[u] = std::round(point) / 2;
+    // }
+    // buffer[0] *= inverseSqrtTwo;
+    // for (size_t i = 0; i < JPEG_DCT_SIZE; i++) {
+        // data[i * stride] = buffer[i];
+    // }
+    // return;
     
     // Idea from https://web.stanford.edu/class/ee398a/handouts/lectures/07-TransformCoding.pdf#page=30
     float v0 = data[0 * stride] + data[7 * stride];
@@ -598,7 +598,7 @@ void Jpeg::Jpeg::encodeCompressed(BitBuffer::BitBufferOut& dst)
                     leadingZeros++;
                 }
             }
-            if (lastInserted != JPEG_BLOCK_SIZE) {
+            if (blocks[blockNum][JPEG_BLOCK_SIZE - 1] == 0) {
                 block.push_back(split_t(0, 0));
             }
             mcu.push_back(block);
